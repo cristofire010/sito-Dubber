@@ -1,0 +1,149 @@
+globalThis.ChoicerLocale = globalThis.DubClubLocale = {"locale":"en","messages":{},"locales":[{"id":"en","prefix":"","label":"English","og":"en_US"},{"id":"pt-BR","prefix":"/pt-br","label":"Português (Brasil)","og":"pt_BR"},{"id":"es","prefix":"/es","label":"Español","og":"es_ES"},{"id":"th","prefix":"/th","label":"ไทย","og":"th_TH"},{"id":"ru","prefix":"/ru","label":"Русский","og":"ru_RU"},{"id":"de","prefix":"/de","label":"Deutsch","og":"de_DE"}],"pages":["/","/download/","/pricing/"]};
+(() => {
+  'use strict';
+  let { locale, messages } = globalThis.DubClubLocale;
+  const { locales, pages } = globalThis.DubClubLocale;
+  const normalize = value => value.replace(/\s+/gu, ' ').trim();
+  const t = (key, ...values) => (Object.prototype.hasOwnProperty.call(messages, key) ? messages[key] : key).replace(/\{(\d+)\}/gu, (match, index) => index < values.length ? String(values[index]) : match);
+  const text = (strings, ...values) => t(strings.reduce((key, part, index) => key + (index ? `{${index - 1}}` : '') + part, ''), ...values);
+  const path = (value, language = locale) => {
+    const url = new URL(value, location.href);
+    if (url.origin !== location.origin) return value;
+    const pathname = url.pathname.replace(/^\/(pt-br|es|th|ru|de)(?=\/|$)/u, '') || '/';
+    if (pages.includes(pathname)) url.pathname = `${locales.find(item => item.id === language)?.prefix || ''}${pathname}`;
+    return `${url.pathname}${url.search}${url.hash}`;
+  };
+  // Translate the template before inserting values, so names, captions, and pack data stay intact.
+  const html = (strings, ...values) => {
+    if (locale === 'en') return strings.reduce((result, part, index) => result + (index ? values[index - 1] : '') + part, '');
+    const template = document.createElement('template');
+    template.innerHTML = strings.reduce((result, part, index) => result + (index ? `DUBCLUB_SLOT_${index - 1}_END` : '') + part, '');
+    const translate = value => {
+      const slots = [];
+      const key = normalize(value).replace(/DUBCLUB_SLOT_(\d+)_END/gu, match => `{${slots.push(match) - 1}}`);
+      if (!Object.prototype.hasOwnProperty.call(messages, key)) return value;
+      return value.replace(/\S[\s\S]*\S|\S/u, () => t(key, ...slots));
+    };
+    const walker = document.createTreeWalker(template.content, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT);
+    while (walker.nextNode()) {
+      const node = walker.currentNode;
+      if (node.nodeType === Node.TEXT_NODE && !['SCRIPT', 'STYLE'].includes(node.parentElement?.tagName)) node.nodeValue = translate(node.nodeValue);
+      if (node.nodeType === Node.ELEMENT_NODE) {
+        for (const name of ['title', 'alt', 'aria-label', 'placeholder']) if (node.hasAttribute(name)) node.setAttribute(name, translate(node.getAttribute(name)));
+        if (node.tagName === 'A' && node.hasAttribute('href') && !node.getAttribute('href').includes('DUBCLUB_SLOT_')) node.setAttribute('href', path(node.getAttribute('href')));
+      }
+    }
+    return template.innerHTML.replace(/DUBCLUB_SLOT_(\d+)_END/gu, (_, index) => String(values[index]));
+  };
+  globalThis.ChoicerI18n = globalThis.DubClubI18n = { get locale() { return locale; }, t, text, html, path };
+  document.addEventListener('DOMContentLoaded', () => {
+    const menus = [...document.querySelectorAll('.language-menu')];
+    if (!menus.length) return;
+    for (const menu of menus) menu.querySelector('.language-control').hidden = false;
+    let storage;
+    let preference;
+    let detected;
+    for (const name of ['localStorage', 'sessionStorage']) {
+      try {
+        const candidate = globalThis[name];
+        preference = candidate.getItem('dubclub-language');
+        detected = candidate.getItem('dubclub-language-detected');
+        // Require writable storage so a manual English choice can be remembered.
+        candidate.setItem('dubclub-language-checked', '1');
+        storage = candidate;
+        break;
+      } catch { /* Language switching also works when storage is unavailable. */ }
+    }
+    let switching = false;
+    const switchLanguage = async (language, source = menus[0], remember = true) => {
+      if (switching || language === locale) return;
+      switching = true;
+      for (const menu of menus) {
+        menu.querySelector('select').disabled = true;
+        menu.setAttribute('aria-busy', 'true');
+        menu.querySelector('[role="status"]')?.remove();
+      }
+      try {
+        const destination = path(`${location.pathname}${location.search}${location.hash}`, language);
+        const [dataResponse, pageResponse] = await Promise.all([fetch(`/i18n/${language}.json`), fetch(destination)]);
+        if (!dataResponse.ok || !pageResponse.ok) throw new Error('Language unavailable');
+        const [nextMessages, nextHtml] = await Promise.all([dataResponse.json(), pageResponse.text()]);
+        const nextDocument = new DOMParser().parseFromString(nextHtml, 'text/html');
+        // Only touch marked interface text that still matches its previous value.
+        // Dynamic app state and user-provided content are refreshed by their owners.
+        document.querySelectorAll('[data-l10n-text]').forEach(element => {
+          for (const [index, key] of Object.entries(JSON.parse(element.dataset.l10nText))) {
+            const node = element.childNodes[index];
+            if (node?.nodeType === Node.TEXT_NODE && normalize(node.nodeValue) === normalize(t(key))) {
+              node.nodeValue = node.nodeValue.replace(/\S[\s\S]*\S|\S/u, () => nextMessages[key] ?? key);
+            }
+          }
+        });
+        document.querySelectorAll('[data-l10n-attrs]').forEach(element => {
+          for (const [name, key] of Object.entries(JSON.parse(element.dataset.l10nAttrs))) {
+            if (normalize(element.getAttribute(name) || '') === normalize(t(key))) element.setAttribute(name, nextMessages[normalize(key)] ?? key);
+          }
+        });
+        document.querySelectorAll('a[href]:not([data-locale])').forEach(anchor => {
+          if (!anchor.getAttribute('href').startsWith('#')) anchor.setAttribute('href', path(anchor.getAttribute('href'), language));
+        });
+        document.querySelectorAll('meta[name="description"], meta[property^="og:"], meta[name^="twitter:"], link[rel="canonical"]').forEach(node => {
+          const name = node.getAttribute('name') || node.getAttribute('property');
+          const replacement = name ? nextDocument.head.querySelector(`meta[name="${name}"], meta[property="${name}"]`) : nextDocument.head.querySelector('link[rel="canonical"]');
+          if (replacement) node.replaceWith(replacement);
+        });
+        const structured = document.querySelector('script[type="application/ld+json"]');
+        const nextStructured = nextDocument.querySelector('script[type="application/ld+json"]');
+        if (structured && nextStructured) structured.textContent = nextStructured.textContent;
+        locale = language;
+        messages = nextMessages;
+        document.documentElement.lang = locale;
+        document.title = nextDocument.title;
+        // Room actions and hash navigation may change the URL while translations load.
+        history.replaceState(history.state, '', path(`${location.pathname}${location.search}${location.hash}`, language));
+        for (const menu of menus) {
+          const selector = menu.querySelector('select');
+          selector.setAttribute('aria-label', t('Language'));
+          selector.title = t('Language');
+          menu.querySelector('.language-current').textContent = locale.toUpperCase();
+        }
+        if (remember) {
+          try { storage?.setItem('dubclub-language', locale); } catch { /* Storage is optional. */ }
+        }
+        document.dispatchEvent(new Event('dubclub:localechange'));
+      } catch {
+        const status = document.createElement('span');
+        status.setAttribute('role', 'status');
+        status.textContent = t('Language could not be loaded. Please try again.');
+        source.append(status);
+      } finally {
+        switching = false;
+        for (const menu of menus) {
+          const selector = menu.querySelector('select');
+          selector.disabled = false;
+          selector.value = locale;
+          menu.removeAttribute('aria-busy');
+        }
+      }
+    };
+    for (const menu of menus) {
+      const selector = menu.querySelector('select');
+      selector.addEventListener('change', () => switchLanguage(selector.value, menu));
+    }
+
+    // Apply preferences on every default-homepage entry, including internal links.
+    // Explicit language URLs and other pages keep their requested language.
+    if (storage && location.pathname === '/') {
+      let language = locales.find(item => item.id === preference)?.id || locales.find(item => item.id === detected)?.id;
+      if (!language) {
+        for (const requested of navigator.languages?.length ? navigator.languages : [navigator.language]) {
+          const base = requested.toLowerCase().split('-')[0];
+          language = locales.find(item => item.id.toLowerCase().split('-')[0] === base)?.id;
+          if (language) break;
+        }
+        try { storage.setItem('dubclub-language-detected', language || 'en'); } catch { /* Storage is optional. */ }
+      }
+      if (language && language !== locale) void switchLanguage(language, menus[0], false);
+    }
+  });
+})();
