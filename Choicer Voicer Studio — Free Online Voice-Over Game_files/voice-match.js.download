@@ -1,0 +1,101 @@
+(() => {
+  const sampleCount = 360;
+  const peak = (point) => Math.max(
+    Number.isFinite(point?.min) ? Math.abs(point.min) : 0,
+    Number.isFinite(point?.max) ? Math.abs(point.max) : 0,
+  );
+  const normalize = (peaks, reference) => peaks.map((value) => {
+    const ratio = Math.min(1, value / .008);
+    const amplitude = value > .0005 ? Math.min(.9, value / reference * .9 * ratio * ratio) : 0;
+    return { min: -amplitude, max: amplitude };
+  });
+  const displayPoints = (points) => {
+    const peaks = points.map(peak);
+    return normalize(peaks, Math.max(.02, ...peaks));
+  };
+  const contour = (points) => {
+    const peaks = points.map(peak);
+    const weights = [.0625, .25, .375, .25, .0625];
+    const smoothed = peaks.map((_value, index) => {
+      let amplitude = 0;
+      let weight = 0;
+      for (let offset = -2; offset <= 2; offset += 1) {
+        if (index + offset < 0 || index + offset >= peaks.length) continue;
+        amplitude += peaks[index + offset] * weights[offset + 2];
+        weight += weights[offset + 2];
+      }
+      return amplitude / weight;
+    });
+    const visible = smoothed.filter((value) => value > .0005).sort((a, b) => a - b);
+    return normalize(smoothed, Math.max(.02, visible[Math.floor((visible.length - 1) * .95)] || 0));
+  };
+  const sample = (samples, count = sampleCount) => {
+    if (!samples?.length || count < 1) return [];
+    return Array.from({ length: count }, (_, index) => {
+      const start = Math.min(samples.length - 1, Math.floor(index * samples.length / count));
+      const end = Math.min(samples.length, Math.max(start + 1, Math.floor((index + 1) * samples.length / count)));
+      let min = Infinity;
+      let max = -Infinity;
+      for (let cursor = start; cursor < end; cursor += 1) {
+        min = Math.min(min, samples[cursor]);
+        max = Math.max(max, samples[cursor]);
+      }
+      return { min, max };
+    });
+  };
+  const validSource = (source) => source && Number.isFinite(source.durationSeconds) && source.durationSeconds > 0
+    && Array.isArray(source.points) && source.points.length > 0 && source.points.length <= 720
+    && source.points.every((point) => Number.isFinite(point?.min) && Number.isFinite(point?.max));
+  const envelope = (source, clipDuration) => {
+    const points = contour(source.points);
+    const duration = Math.min(source.durationSeconds, clipDuration);
+    return Array.from({ length: sampleCount * 2 }, (_, index) => {
+      const time = (index + .5) / (sampleCount * 2) * clipDuration;
+      if (time > duration) return 0;
+      const position = time / duration * (points.length - 1);
+      const lower = Math.floor(position);
+      const upper = Math.min(points.length - 1, lower + 1);
+      return points[lower].max * (1 - (position - lower)) + points[upper].max * (position - lower);
+    });
+  };
+  // Port of iOS VoiceMatchAnalyzer v4: fixed-time contour overlap and weighted SSIM.
+  const compare = (reference, recording, clipDuration = reference?.durationSeconds) => {
+    if (!validSource(reference) || !validSource(recording) || !Number.isFinite(clipDuration) || clipDuration <= 0) return null;
+    const original = envelope(reference, clipDuration);
+    const take = envelope(recording, clipDuration);
+    let overlap = 0;
+    let area = 0;
+    let weightedOriginal = 0;
+    let weightedTake = 0;
+    original.forEach((a, index) => {
+      const b = take[index];
+      const weight = Math.min(a, b);
+      overlap += weight;
+      area += a + b;
+      weightedOriginal += weight * a;
+      weightedTake += weight * b;
+    });
+    if (overlap <= 1e-8) return 0;
+    const meanOriginal = weightedOriginal / overlap;
+    const meanTake = weightedTake / overlap;
+    let originalVariance = 0;
+    let takeVariance = 0;
+    let covariance = 0;
+    original.forEach((a, index) => {
+      const b = take[index];
+      const weight = Math.min(a, b);
+      originalVariance += weight * (a - meanOriginal) ** 2;
+      takeVariance += weight * (b - meanTake) ** 2;
+      covariance += weight * (a - meanOriginal) * (b - meanTake);
+    });
+    const stability = .15 ** 2 * overlap;
+    const dynamics = Math.max(0, Math.min(1, (2 * covariance + stability) / (originalVariance + takeVariance + stability)));
+    const coverage = 2 * overlap / area;
+    const similarity = Math.max(0, Math.min(coverage, coverage * .5 + dynamics * .5));
+    const calibrated = similarity > .7 ? 1 - (1 - similarity) ** 2 / .3 : similarity;
+    return Math.round(100 * calibrated);
+  };
+  const grade = (score) => !Number.isInteger(score) || score < 0 || score > 100 ? null
+    : score >= 90 ? 'Perfect' : score >= 75 ? 'Great' : score >= 60 ? 'Good' : 'Keep practicing';
+  globalThis.VoiceMatch = { sample, displayPoints, contour, compare, grade, validSource, scoreVersion: 4 };
+})();
