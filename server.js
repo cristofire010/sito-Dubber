@@ -23,9 +23,9 @@ const MIME_TYPES = {
   '.zip': 'application/zip'
 };
 
-// Trova il file HTML principale
-const files = fs.readdirSync(ROOT_DIR);
-const mainHtml = files.find(f => f.endsWith('.html') && f.includes('Choicer')) || files.find(f => f.endsWith('.html'));
+const mainHtml = fs.existsSync(path.join(ROOT_DIR, 'DubClub.html'))
+  ? 'DubClub.html'
+  : (fs.existsSync(path.join(ROOT_DIR, 'index.html')) ? 'index.html' : 'DubClub.html');
 
 const server = http.createServer((req, res) => {
   let decodedUrl = decodeURI(req.url.split('?')[0]);
@@ -35,7 +35,6 @@ const server = http.createServer((req, res) => {
 
   const filePath = path.join(ROOT_DIR, decodedUrl);
 
-  // Prevenzione path traversal
   if (!filePath.startsWith(ROOT_DIR)) {
     res.writeHead(403);
     res.end('Access Denied');
@@ -65,13 +64,11 @@ const server = http.createServer((req, res) => {
 server.listen(PORT, () => {
   const url = `http://localhost:${PORT}/`;
   console.log('==================================================');
-  console.log(`  Choicer Voicer Studio - Server Locale Attivo!`);
+  console.log(`  DubClub Studio - Server Locale Attivo!`);
   console.log(`  Indirizzo: ${url}`);
   console.log('  Premi CTRL+C per arrestare il server.');
   console.log('==================================================');
 
-  // Apre automaticamente il browser
   const openCmd = process.platform === 'win32' ? `start "" "${url}"` : `open "${url}"`;
   exec(openCmd);
 });
-

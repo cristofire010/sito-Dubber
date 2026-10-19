@@ -9,14 +9,14 @@
 
 
 
-// Choicer Voicer Studio - Serverless WebRTC Multiplayer (PeerJS P2P)
+// DubClub Studio - Serverless WebRTC Multiplayer (PeerJS P2P)
 (function () {
   'use strict';
 
   let peer = null;
   let roomCode = null;
   let isHost = false;
-  let myPlayerName = localStorage.getItem('choicer_player_name') || ('Player_' + Math.floor(Math.random() * 900 + 100));
+  let myPlayerName = localStorage.getItem('dubclub_player_name') || ('Player_' + Math.floor(Math.random() * 900 + 100));
   let isReady = false;
 
   // Host state
@@ -63,7 +63,7 @@
       inputName.value = myPlayerName;
       inputName.addEventListener('input', () => {
         myPlayerName = inputName.value.trim() || myPlayerName;
-        localStorage.setItem('choicer_player_name', myPlayerName);
+        localStorage.setItem('dubclub_player_name', myPlayerName);
         validateInputs();
       });
     }
@@ -543,7 +543,7 @@
       setTimeout(() => { btn.innerHTML = orig; }, 1800);
     }
 
-    // Compatibilità API Choicer Voicer
+    // Compatibilità API DubClub
     window.Multiplayer = {
       configure() {},
       setEntryRestricted() {},

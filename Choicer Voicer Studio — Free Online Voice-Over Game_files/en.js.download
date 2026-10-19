@@ -1,8 +1,8 @@
-globalThis.ChoicerLocale = {"locale":"en","messages":{},"locales":[{"id":"en","prefix":"","label":"English","og":"en_US"},{"id":"pt-BR","prefix":"/pt-br","label":"Português (Brasil)","og":"pt_BR"},{"id":"es","prefix":"/es","label":"Español","og":"es_ES"},{"id":"th","prefix":"/th","label":"ไทย","og":"th_TH"},{"id":"ru","prefix":"/ru","label":"Русский","og":"ru_RU"},{"id":"de","prefix":"/de","label":"Deutsch","og":"de_DE"}],"pages":["/","/download/","/pricing/"]};
+globalThis.DubClubLocale = {"locale":"en","messages":{},"locales":[{"id":"en","prefix":"","label":"English","og":"en_US"},{"id":"pt-BR","prefix":"/pt-br","label":"Português (Brasil)","og":"pt_BR"},{"id":"es","prefix":"/es","label":"Español","og":"es_ES"},{"id":"th","prefix":"/th","label":"ไทย","og":"th_TH"},{"id":"ru","prefix":"/ru","label":"Русский","og":"ru_RU"},{"id":"de","prefix":"/de","label":"Deutsch","og":"de_DE"}],"pages":["/","/download/","/pricing/"]};
 (() => {
   'use strict';
-  let { locale, messages } = globalThis.ChoicerLocale;
-  const { locales, pages } = globalThis.ChoicerLocale;
+  let { locale, messages } = globalThis.DubClubLocale;
+  const { locales, pages } = globalThis.DubClubLocale;
   const normalize = value => value.replace(/\s+/gu, ' ').trim();
   const t = (key, ...values) => (Object.prototype.hasOwnProperty.call(messages, key) ? messages[key] : key).replace(/\{(\d+)\}/gu, (match, index) => index < values.length ? String(values[index]) : match);
   const text = (strings, ...values) => t(strings.reduce((key, part, index) => key + (index ? `{${index - 1}}` : '') + part, ''), ...values);
@@ -17,10 +17,10 @@ globalThis.ChoicerLocale = {"locale":"en","messages":{},"locales":[{"id":"en","p
   const html = (strings, ...values) => {
     if (locale === 'en') return strings.reduce((result, part, index) => result + (index ? values[index - 1] : '') + part, '');
     const template = document.createElement('template');
-    template.innerHTML = strings.reduce((result, part, index) => result + (index ? `CHOICER_SLOT_${index - 1}_END` : '') + part, '');
+    template.innerHTML = strings.reduce((result, part, index) => result + (index ? `DUBCLUB_SLOT_${index - 1}_END` : '') + part, '');
     const translate = value => {
       const slots = [];
-      const key = normalize(value).replace(/CHOICER_SLOT_(\d+)_END/gu, match => `{${slots.push(match) - 1}}`);
+      const key = normalize(value).replace(/DUBCLUB_SLOT_(\d+)_END/gu, match => `{${slots.push(match) - 1}}`);
       if (!Object.prototype.hasOwnProperty.call(messages, key)) return value;
       return value.replace(/\S[\s\S]*\S|\S/u, () => t(key, ...slots));
     };
@@ -30,12 +30,12 @@ globalThis.ChoicerLocale = {"locale":"en","messages":{},"locales":[{"id":"en","p
       if (node.nodeType === Node.TEXT_NODE && !['SCRIPT', 'STYLE'].includes(node.parentElement?.tagName)) node.nodeValue = translate(node.nodeValue);
       if (node.nodeType === Node.ELEMENT_NODE) {
         for (const name of ['title', 'alt', 'aria-label', 'placeholder']) if (node.hasAttribute(name)) node.setAttribute(name, translate(node.getAttribute(name)));
-        if (node.tagName === 'A' && node.hasAttribute('href') && !node.getAttribute('href').includes('CHOICER_SLOT_')) node.setAttribute('href', path(node.getAttribute('href')));
+        if (node.tagName === 'A' && node.hasAttribute('href') && !node.getAttribute('href').includes('DUBCLUB_SLOT_')) node.setAttribute('href', path(node.getAttribute('href')));
       }
     }
-    return template.innerHTML.replace(/CHOICER_SLOT_(\d+)_END/gu, (_, index) => String(values[index]));
+    return template.innerHTML.replace(/DUBCLUB_SLOT_(\d+)_END/gu, (_, index) => String(values[index]));
   };
-  globalThis.ChoicerI18n = { get locale() { return locale; }, t, text, html, path };
+  globalThis.DubClubI18n = { get locale() { return locale; }, t, text, html, path };
   document.addEventListener('DOMContentLoaded', () => {
     const menus = [...document.querySelectorAll('.language-menu')];
     if (!menus.length) return;
@@ -46,10 +46,10 @@ globalThis.ChoicerLocale = {"locale":"en","messages":{},"locales":[{"id":"en","p
     for (const name of ['localStorage', 'sessionStorage']) {
       try {
         const candidate = globalThis[name];
-        preference = candidate.getItem('choicer-language');
-        detected = candidate.getItem('choicer-language-detected');
+        preference = candidate.getItem('dubclub-language');
+        detected = candidate.getItem('dubclub-language-detected');
         // Require writable storage so a manual English choice can be remembered.
-        candidate.setItem('choicer-language-checked', '1');
+        candidate.setItem('dubclub-language-checked', '1');
         storage = candidate;
         break;
       } catch { /* Language switching also works when storage is unavailable. */ }
@@ -108,9 +108,9 @@ globalThis.ChoicerLocale = {"locale":"en","messages":{},"locales":[{"id":"en","p
           menu.querySelector('.language-current').textContent = locale.toUpperCase();
         }
         if (remember) {
-          try { storage?.setItem('choicer-language', locale); } catch { /* Storage is optional. */ }
+          try { storage?.setItem('dubclub-language', locale); } catch { /* Storage is optional. */ }
         }
-        document.dispatchEvent(new Event('choicer:localechange'));
+        document.dispatchEvent(new Event('dubclub:localechange'));
       } catch {
         const status = document.createElement('span');
         status.setAttribute('role', 'status');
@@ -141,7 +141,7 @@ globalThis.ChoicerLocale = {"locale":"en","messages":{},"locales":[{"id":"en","p
           language = locales.find(item => item.id.toLowerCase().split('-')[0] === base)?.id;
           if (language) break;
         }
-        try { storage.setItem('choicer-language-detected', language || 'en'); } catch { /* Storage is optional. */ }
+        try { storage.setItem('dubclub-language-detected', language || 'en'); } catch { /* Storage is optional. */ }
       }
       if (language && language !== locale) void switchLanguage(language, menus[0], false);
     }
